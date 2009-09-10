@@ -208,6 +208,35 @@ sub with_profiler(&@) {
 
 =head1 METHODS
 
+=head2 $class->satisfy_futures()
+
+Process all queued futures and return once the queue is
+exhausted and all futures and their dependencies are
+satisfied.
+
+=head2 $class->queue_size
+
+Returns the total number of items in the queue.
+
+=head2 $class->set_preferred_load_order($class1, $class2)
+
+Call this at load time (i.e. before calling C<satisfy_futures>)
+to specify that during satisfaction futures of class C<$class1>
+should be processed before futures of class C<$class2>.
+
+This can be used in situations where one kind of future
+must always be processed before another. The canonical example
+of this is if your application has data partitioned by user.
+In order to load partitioned data, you first need to lookup
+which partition a given user is on.
+
+In principle, it would be better to accomplish this via a
+L<Util::Future::Sequence> where the first future is to lookup
+the partition, but many systems aren't really architected
+to have this as a distinct step but rather do it as a
+side-effect of their data load calls, so this method
+exists to throw them a bone until they can refactor to
+break out the partition lookup to be a future of its own.
 
 =head1 DEBUGGING/ANALYSIS METHODS
 

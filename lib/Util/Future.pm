@@ -13,6 +13,8 @@ use Scalar::Util qw(refaddr blessed);
 use Carp;
 use Util::FutureManager;
 
+our $VERSION = '0.01';
+
 use constant ON_SATISFY_CALLBACKS => __PACKAGE__.'::on_satisfy_callbacks';
 use constant RESULT => __PACKAGE__.'::result';
 
@@ -71,45 +73,26 @@ sub satisfied {
     return exists($_[0]->{RESULT()}) ? 1 : 0;
 }
 
-### PUBLIC CLASS METHODS
-
-sub create_sequence {
-    my ($class, $future, $cb) = @_;
-
-    my $callback = sub {
-        local $_ = $_[0];
-        $cb->($_);
-    };
-
-    # If the future's already been satisfied (i.e. it came out of the
-    # satisfied cache) then we can just run the callback right away
-    # and find out what else we need to load without doing
-    # an extra iteration.
-    if ($future->satisfied) {
-        $cb->($future->result);
-        return $future;
-    }
-    else {
-        $future->add_on_satisfy_callback(sub {
-            local $_ = $_[0];
-            $cb->($_);
-        });
-        return $future;
-    }
-}
-
-### PRIVATE METHODS
-
 sub add_on_satisfy_callback {
     my ($self, $cb) = @_;
 
     croak "Provided callback must be a CODE reference" unless ref($cb) eq 'CODE';
 
-    $self->{ON_SATISFY_CALLBACKS()} ||= [];
-    push @{$self->{ON_SATISFY_CALLBACKS()}}, $cb;
+    # If someone tries to add a callback to an already-satisfied future,
+    # we just run the callback immediately, since otherwise it's never
+    # going to get called.
+    if ($self->satisfied) {
+        $cb->($self->result);
+    }
+    else {
+        $self->{ON_SATISFY_CALLBACKS()} ||= [];
+        push @{$self->{ON_SATISFY_CALLBACKS()}}, $cb;
+    }
 
     return undef;
 }
+
+### PRIVATE METHODS
 
 sub run_on_satisfy_callbacks {
     my ($self) = @_;
@@ -164,35 +147,16 @@ if the load has not yet taken place.
 =head2 $future->add_on_satisfy_callback($cb)
 
 Adds a callback which will be called once this
-future's result has been delivered. See
-the C<create_sequence> class method below
-for a convenient wrapper around this.
+future's result has been delivered.
+
+This is how combinator futures are implemented.
+See L<Util::Future::Combinator> for more information.
 
 =head1 PUBLIC STATIC API
 
 The following utility methods are provided as
 shorthands for operations that would normally
 require multiple steps.
-
-=head2 Util::Future->create_sequence($future, $callback)
-
-Attaches to $future a callback that will
-put the result in a localized C<$_> and the call your
-provided callback once the future is satisfied.
-
-Returns the provided future with the callback attached.
-
-This is intended to allow you to write calls like:
-
-    Util::Future->create_sequence(
-        My::App::Future::User::Load->inject_for_user_id($user_id),
-        sub {
-            My::App::Future::User::LoadUserpic->inject_for_user($_);
-        }
-    );
-
-Calls to C<create_sequence> can be nested to create
-multi-step loading sequences.
 
 =head1 SUBCLASS API
 
